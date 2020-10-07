@@ -1,0 +1,107 @@
+---
+- name: Install
+  hosts: controlnode
+  tasks:
+    - name: Add Repos
+      apt_repository:
+        repo: "{{ item }}"
+        state: present
+      become: yes
+      with_items:
+        - ppa:ondrej/php
+
+    - name: Update Repos
+      apt:
+        update_cache: yes
+
+    - name: Install NGINX, PHP and MySQL
+      apt:
+        name: "{{ item }}"
+        state: present
+      become: yes
+      with_items:
+        - nginx
+        - php7.2-cli
+        - php7.2-fpm
+        - mysql-server
+
+    - name: Check MySQL
+      ignore_errors: yes
+      shell: |
+          mysql -e "UPDATE mysql.user SET Password = PASSWORD('Password') WHERE User = 'root'"
+          mysql -e "DROP USER ''@'localhost'"
+          mysql -e "DROP USER ''@'$(hostname)'"
+          mysql -e "DROP DATABASE test"
+          mysql -e "CREATE USER 'moodle'@'%' IDENTIFIED BY 'Password1234!'"
+          mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'moodle'@'%';"
+          mysql -e "FLUSH PRIVILEGES"
+          mysql -e "CREATE DATABASE moodle"
+
+    - name: Install PHP modules
+      apt:
+        name: "{{ item }}"
+        state: present
+      become: yes
+
+      with_items:
+        - php7.2-common
+        - php7.2-curl
+        - php7.2-fpm
+        - php7.2-gd
+        - php7.2-intl
+        - php7.2-mbstring
+        - php7.2-mysql
+        - php7.2-mysqli
+        - php7.2-soap
+        - php7.2-xml
+        - php7.2-xmlrpc
+        - php7.2-zip
+
+    - name: Set up php-fpm
+      copy:
+        src: www.conf
+        dest: /etc/php/7.2/fpm/pool.d/www.conf
+
+    - name: Reload PHP
+      service:
+        name: php7.2-fpm
+        state: restarted
+
+    - name: Create MoodleData Folder
+      file: 
+        path: /moodledata
+        owner: www-data  
+        group: www-data 
+        mode: 0777 
+        state: directory
+
+    - name: Download Moodle packages
+      ignore_errors: yes
+      shell: 'git clone -b MOODLE_39_STABLE git://git.moodle.org/moodle.git /moodle'
+
+    - name: Copy NGINX config
+      copy:
+        src: default
+        dest: /etc/nginx/sites-enabled/default
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Set file moodle ownerships
+      shell: |
+        chown -R www-data:www-data /moodle
+        chmod -R 0777 /moodledata
+
+    - name: Generate .htaccess
+      shell: |
+        echo "order deny,allow" >> /moodle/.htaccess
+        echo "deny from all" >> /moodle/.htaccess
+
+
+    - name: Apply NGINX config
+      service:
+        name: nginx
+        state: restarted
+
+
+
