@@ -1,7 +1,18 @@
 ---
 - name: Install
-  hosts: controlnode
+  hosts: moodle310
+  become: yes
   tasks:
+
+    - name: Update
+      apt:
+        update_cache: yes
+      
+    - name: asd
+      apt:
+        name: ['gnupg1', 'unzip', 'tar', 'mc']
+        state: present
+
     - name: Add Repos
       apt_repository:
         repo: "{{ item }}"
@@ -21,8 +32,8 @@
       become: yes
       with_items:
         - nginx
-        - php7.2-cli
-        - php7.2-fpm
+        - php7.4-cli
+        - php7.4-fpm
         - mysql-server
 
     - name: Check MySQL
@@ -36,35 +47,33 @@
           mysql -e "GRANT ALL PRIVILEGES ON * . * TO 'moodle'@'%';"
           mysql -e "FLUSH PRIVILEGES"
           mysql -e "CREATE DATABASE moodle"
-
     - name: Install PHP modules
       apt:
         name: "{{ item }}"
         state: present
       become: yes
-
       with_items:
-        - php7.2-common
-        - php7.2-curl
-        - php7.2-fpm
-        - php7.2-gd
-        - php7.2-intl
-        - php7.2-mbstring
-        - php7.2-mysql
-        - php7.2-mysqli
-        - php7.2-soap
-        - php7.2-xml
-        - php7.2-xmlrpc
-        - php7.2-zip
+        - php7.4-common
+        - php7.4-curl
+        - php7.4-fpm
+        - php7.4-gd
+        - php7.4-intl
+        - php7.4-mbstring
+        - php7.4-mysql
+        - php7.4-mysqli
+        - php7.4-soap
+        - php7.4-xml
+        - php7.4-xmlrpc
+        - php7.4-zip
 
     - name: Set up php-fpm
       copy:
         src: www.conf
-        dest: /etc/php/7.2/fpm/pool.d/www.conf
+        dest: /etc/php/7.4/fpm/pool.d/www.conf
 
     - name: Reload PHP
       service:
-        name: php7.2-fpm
+        name: php7.4-fpm
         state: restarted
 
     - name: Create MoodleData Folder
@@ -75,14 +84,29 @@
         mode: 0777 
         state: directory
 
-    - name: Download Moodle packages
-      ignore_errors: yes
-      shell: 'git clone -b MOODLE_39_STABLE git://git.moodle.org/moodle.git /moodle'
+    - name: Create Moodle Folder
+      file: 
+        path: /moodle
+        owner: root  
+        group: root 
+        mode: 0755 
+        state: directory
 
-    - name: Copy NGINX config
+    - name: Download moodle 3.10
+      shell: 'wget https://download.moodle.org/download.php/direct/stable310/moodle-3.10.1.tgz'
+
+    - name: Extract moodle files
+      unarchive:
+        src: /root/moodle-3.10.1.tgz
+        dest: /moodle
+        remote_src: yes
+        extra_opts: [--strip-components=1]
+        mode: 0755
+
+    - name:
       copy:
-        src: default
-        dest: /etc/nginx/sites-enabled/default
+        src: moodle
+        dest: /etc/nginx/sites-enabled/moodle
         owner: root
         group: root
         mode: 0644
@@ -91,17 +115,27 @@
       shell: |
         chown -R www-data:www-data /moodle
         chmod -R 0777 /moodledata
-
     - name: Generate .htaccess
       shell: |
         echo "order deny,allow" >> /moodle/.htaccess
         echo "deny from all" >> /moodle/.htaccess
+        echo "php_value upload_max_filesize 150M" >> /moodle/.htaccess 
+        echo "php_value post_max_size 150M" >> /moodle/.htaccess
+    - name: fix config-dist.php
+      shell: |
+        echo "$CFG->xsendfile = 'X-Accel-Redirect';
+        $CFG->xsendfilealiases = array(
+            '/dataroot/' => $CFG->dataroot
+            );" >> /moodle/config-dist.php
+    - name: Remove previous nginx config
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+
+
 
 
     - name: Apply NGINX config
       service:
         name: nginx
         state: restarted
-
-
-
