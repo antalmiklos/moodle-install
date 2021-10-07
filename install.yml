@@ -1,6 +1,6 @@
 ---
 - name: Install
-  hosts: moodle310
+  hosts: localhost
   become: yes
   tasks:
 
